@@ -1,7 +1,12 @@
 import asyncio, edge_tts, os, subprocess
 from pathlib import Path
 
-VOICE_ID = "hi-IN-SureshNeural"
+# THE PROBLEM: "hi-IN-SureshNeural" does not exist in Edge-TTS. 
+# "Suresh" is a Sarvam AI / AI4Bharat Bulbul-TTS voice which is cloud-based/paid.
+# SOLUTION: Using "hi-IN-MadhurNeural" as the best free Suresh-like alternative for now.
+# TO USE REAL SURESH: Provide a Sarvam AI API Key.
+VOICE_ID = "hi-IN-MadhurNeural" 
+
 FPS, TOTAL_FRAMES = 60, 2700
 AUDIO_DIR = Path("public/audio")
 SEG_DIR = AUDIO_DIR / "segments"
@@ -24,6 +29,7 @@ async def gen():
     v_dir = SEG_DIR / "Suresh"
     v_dir.mkdir(parents=True, exist_ok=True)
     for sc in SCENES:
+        # Generate using the valid Edge-TTS male voice
         await edge_tts.Communicate(sc["text"], VOICE_ID).save(str(v_dir / f"{sc['id']}.mp3"))
 
 def comb():
