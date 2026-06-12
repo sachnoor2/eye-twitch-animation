@@ -1,11 +1,9 @@
-import asyncio, edge_tts, os, subprocess
+import requests, os, subprocess
 from pathlib import Path
 
-# THE PROBLEM: "hi-IN-SureshNeural" does not exist in Edge-TTS. 
-# "Suresh" is a Sarvam AI / AI4Bharat Bulbul-TTS voice which is cloud-based/paid.
-# SOLUTION: Using "hi-IN-MadhurNeural" as the best free Suresh-like alternative for now.
-# TO USE REAL SURESH: Provide a Sarvam AI API Key.
-VOICE_ID = "hi-IN-MadhurNeural" 
+# NEW NARRATOR: Prahlad Rajgor (ElevenLabs)
+VOICE_ID = "GrHckCvxYXL9GnnbmdP0"
+API_KEY = "{{credential:elevenlabs}}"
 
 FPS, TOTAL_FRAMES = 60, 2700
 AUDIO_DIR = Path("public/audio")
@@ -25,15 +23,22 @@ SCENES = [
     {"id":"s09","fs":2580,"fe":2690,"text":"Agle video ke liye subscribe karein."}
 ]
 
-async def gen():
-    v_dir = SEG_DIR / "Suresh"
+def gen_elevenlabs():
+    v_dir = SEG_DIR / "Prahlad"
     v_dir.mkdir(parents=True, exist_ok=True)
     for sc in SCENES:
-        # Generate using the valid Edge-TTS male voice
-        await edge_tts.Communicate(sc["text"], VOICE_ID).save(str(v_dir / f"{sc['id']}.mp3"))
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+        headers = {"xi-api-key": API_KEY, "Content-Type": "application/json"}
+        data = {"text": sc["text"], "model_id": "eleven_multilingual_v2"}
+        resp = requests.post(url, json=data, headers=headers)
+        if resp.status_code == 200:
+            with open(v_dir / f"{sc['id']}.mp3", "wb") as f:
+                f.write(resp.content)
+        else:
+            print(f"Error for {sc['id']}: {resp.text}")
 
 def comb():
-    v_dir = SEG_DIR / "Suresh"
+    v_dir = SEG_DIR / "Prahlad"
     inputs, filter_parts, labels = [], [], []
     for idx, sc in enumerate(SCENES):
         start_ms = int(sc["fs"] / FPS * 1000)
@@ -44,5 +49,5 @@ def comb():
     subprocess.run(["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[out]", "-t", str(TOTAL_FRAMES/FPS), "-b:a", "192k", str(AUDIO_DIR / "narration_suresh.mp3")], check=True)
 
 if __name__ == "__main__":
-    asyncio.run(gen())
+    gen_elevenlabs()
     comb()
