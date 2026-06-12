@@ -1,9 +1,14 @@
-import requests, os, subprocess
+import os, subprocess, torch
 from pathlib import Path
+from transformers import AutoTokenizer
+from parler_tts import ParlerTTSForConditionalGeneration
+import soundfile as sf
 
-# NEW NARRATOR: Prahlad Rajgor (ElevenLabs)
-VOICE_ID = "GrHckCvxYXL9GnnbmdP0"
-API_KEY = "{{credential:elevenlabs}}"
+# MY PREFERRED CHOICE: ai4bharat/indic-parler-tts
+# Why: Built by IIT Madras/AI4Bharat, supports "Personality Descriptions" (no reference audio needed).
+# Description: Professional science narrator (Versatile).
+MODEL_ID = "ai4bharat/indic-parler-tts"
+DESCRIPTION = "A deep-voiced, authoritative Indian male science narrator with a fast-paced, high-energy delivery, professional clarity, and an urban Indian accent."
 
 FPS, TOTAL_FRAMES = 60, 2700
 AUDIO_DIR = Path("public/audio")
@@ -23,31 +28,35 @@ SCENES = [
     {"id":"s09","fs":2580,"fe":2690,"text":"Agle video ke liye subscribe karein."}
 ]
 
-def gen_elevenlabs():
-    v_dir = SEG_DIR / "Prahlad"
+def gen():
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    model = ParlerTTSForConditionalGeneration.from_pretrained(MODEL_ID).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    
+    v_dir = SEG_DIR / "IndicParler"
     v_dir.mkdir(parents=True, exist_ok=True)
+    
+    input_ids = tokenizer(DESCRIPTION, return_tensors="pt").input_ids.to(device)
+    
     for sc in SCENES:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
-        headers = {"xi-api-key": API_KEY, "Content-Type": "application/json"}
-        data = {"text": sc["text"], "model_id": "eleven_multilingual_v2"}
-        resp = requests.post(url, json=data, headers=headers)
-        if resp.status_code == 200:
-            with open(v_dir / f"{sc['id']}.mp3", "wb") as f:
-                f.write(resp.content)
-        else:
-            print(f"Error for {sc['id']}: {resp.text}")
+        prompt_input_ids = tokenizer(sc["text"], return_tensors="pt").input_ids.to(device)
+        generation = model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
+        audio_arr = generation.cpu().numpy().squeeze()
+        sf.write(v_dir / f"{sc['id']}.wav", audio_arr, model.config.sampling_rate)
 
 def comb():
-    v_dir = SEG_DIR / "Prahlad"
+    v_dir = SEG_DIR / "IndicParler"
     inputs, filter_parts, labels = [], [], []
     for idx, sc in enumerate(SCENES):
         start_ms = int(sc["fs"] / FPS * 1000)
-        inputs += ["-i", str(v_dir / f"{sc['id']}.mp3")]
+        inputs += ["-i", str(v_dir / f"{sc['id']}.mp3")] # FFMPEG will handle wav to mp3 or I should use wav
+        # Fixed: using .wav since sf.write saves as wav
+        inputs[-1] = str(v_dir / f"{sc['id']}.wav")
         filter_parts.append(f"[{idx}]adelay={start_ms}|{start_ms}[d{idx}]")
         labels.append(f"[d{idx}]")
     fc = ";".join(filter_parts) + ";" + "".join(labels) + f"amix=inputs={len(SCENES)}:normalize=0[out]"
     subprocess.run(["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[out]", "-t", str(TOTAL_FRAMES/FPS), "-b:a", "192k", str(AUDIO_DIR / "narration_suresh.mp3")], check=True)
 
 if __name__ == "__main__":
-    gen_elevenlabs()
+    gen()
     comb()
