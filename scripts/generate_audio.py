@@ -5,11 +5,14 @@ import os
 import subprocess
 from pathlib import Path
 
+# MANDATORY: Suresh Narrator profile
+MALE_VOICE = "Suresh" 
+VOICE_ID = "hi-IN-SureshNeural" 
+
 FPS = 60
+TOTAL_FRAMES = 2700
 AUDIO_DIR = Path("public/audio")
 SEG_DIR = AUDIO_DIR / "segments"
-TOTAL_FRAMES = 2700
-
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 SEG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -25,19 +28,15 @@ SCENES = [
     { "id": "s09", "fs": 2580, "fe": 2690, "text": "Agle video ke liye subscribe karein." },
 ]
 
-VOICES = {
-    "Suresh": "hi-IN-SureshNeural",
-}
-
-async def generate_scenes(voice_key, voice_id):
-    v_dir = SEG_DIR / voice_key
+async def generate_scenes():
+    v_dir = SEG_DIR / MALE_VOICE
     v_dir.mkdir(parents=True, exist_ok=True)
     for sc in SCENES:
-        communicate = edge_tts.Communicate(sc["text"], voice_id)
+        communicate = edge_tts.Communicate(sc["text"], VOICE_ID)
         await communicate.save(str(v_dir / f"{sc['id']}.mp3"))
 
-def combine_audio(voice_key):
-    v_dir = SEG_DIR / voice_key
+def combine_audio():
+    v_dir = SEG_DIR / MALE_VOICE
     total_s = TOTAL_FRAMES / FPS
     inputs, filter_parts, labels = [], [], []
     for idx, sc in enumerate(SCENES):
@@ -46,14 +45,10 @@ def combine_audio(voice_key):
         inputs += ["-i", str(seg)]
         filter_parts.append(f"[{idx}]adelay={start_ms}|{start_ms}[d{idx}]")
         labels.append(f"[d{idx}]")
-
     fc = ";".join(filter_parts) + ";" + "".join(labels) + f"amix=inputs={len(SCENES)}:normalize=0[out]"
-    output_path = AUDIO_DIR / f"narration_{voice_key.lower()}.mp3"
+    output_path = AUDIO_DIR / "narration_suresh.mp3"
     subprocess.run(["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[out]", "-t", str(total_s), "-b:a", "192k", str(output_path)], check=True)
 
-async def main():
-    await generate_scenes("Suresh", VOICES["Suresh"])
-    combine_audio("Suresh")
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(generate_scenes())
+    combine_audio()
