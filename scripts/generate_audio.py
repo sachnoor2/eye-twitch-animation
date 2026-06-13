@@ -1,11 +1,12 @@
-import os, subprocess
+import asyncio, edge_tts, os, subprocess
 from pathlib import Path
-from google.cloud import texttospeech
 
-# THE FINAL CHOICE: Google Cloud Neural2-B (Male)
-# Why: High-quality, authoritative narrator voice that works in the cloud.
-# Model: Neural2 is the latest premium tier for lifelike prosody.
-VOICE_ID = "hi-IN-Neural2-B"
+# PERMANENT NARRATOR: Tuned Madhur (Edge-TTS)
+# Tuning: Pitch -5Hz (Deep), Rate +12% (Fast), Volume +20% (Loud)
+# This provides the high-energy "Zack D. Films" science narrator feel.
+VOICE_ID = "hi-IN-MadhurNeural"
+RATE = "+12%"
+PITCH = "-5Hz"
 
 FPS, TOTAL_FRAMES = 60, 2700
 AUDIO_DIR = Path("public/audio")
@@ -25,31 +26,15 @@ SCENES = [
     {"id":"s09","fs":2580,"fe":2690,"text":"Agle video ke liye subscribe karein."}
 ]
 
-def gen():
-    client = texttospeech.TextToSpeechClient()
-    v_dir = SEG_DIR / "GoogleNeural"
+async def gen():
+    v_dir = SEG_DIR / "TunedMadhur"
     v_dir.mkdir(parents=True, exist_ok=True)
-    
-    voice = texttospeech.VoiceSelectionParams(
-        language_code="hi-IN", name=VOICE_ID
-    )
-    audio_config = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3,
-        effects_profile_id=["telephony-class-application"], # Optimal for narration
-        pitch=-2.0, # Slightly deeper
-        speaking_rate=1.1 # Faster Zack D. Films pace
-    )
-
     for sc in SCENES:
-        synthesis_input = texttospeech.SynthesisInput(text=sc["text"])
-        response = client.synthesize_speech(
-            input=synthesis_input, voice=voice, audio_config=audio_config
-        )
-        with open(v_dir / f"{sc['id']}.mp3", "wb") as out:
-            out.write(response.audio_content)
+        communicate = edge_tts.Communicate(sc["text"], VOICE_ID, rate=RATE, pitch=PITCH)
+        await communicate.save(str(v_dir / f"{sc['id']}.mp3"))
 
 def comb():
-    v_dir = SEG_DIR / "GoogleNeural"
+    v_dir = SEG_DIR / "TunedMadhur"
     inputs, filter_parts, labels = [], [], []
     for idx, sc in enumerate(SCENES):
         start_ms = int(sc["fs"] / FPS * 1000)
@@ -60,5 +45,5 @@ def comb():
     subprocess.run(["ffmpeg", "-y"] + inputs + ["-filter_complex", fc, "-map", "[out]", "-t", str(TOTAL_FRAMES/FPS), "-b:a", "192k", str(AUDIO_DIR / "narration_suresh.mp3")], check=True)
 
 if __name__ == "__main__":
-    gen()
+    asyncio.run(gen())
     comb()
