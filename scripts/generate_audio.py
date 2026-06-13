@@ -1,14 +1,11 @@
-import os, subprocess, torch
+import os, subprocess
 from pathlib import Path
-from transformers import AutoTokenizer
-from parler_tts import ParlerTTSForConditionalGeneration
-import soundfile as sf
+from google.cloud import texttospeech
 
-# MY PREFERRED CHOICE: ai4bharat/indic-parler-tts
-# Why: Built by IIT Madras/AI4Bharat, supports "Personality Descriptions" (no reference audio needed).
-# Description: Professional science narrator (Versatile).
-MODEL_ID = "ai4bharat/indic-parler-tts"
-DESCRIPTION = "A deep-voiced, authoritative Indian male science narrator with a fast-paced, high-energy delivery, professional clarity, and an urban Indian accent."
+# THE FINAL CHOICE: Google Cloud Neural2-B (Male)
+# Why: High-quality, authoritative narrator voice that works in the cloud.
+# Model: Neural2 is the latest premium tier for lifelike prosody.
+VOICE_ID = "hi-IN-Neural2-B"
 
 FPS, TOTAL_FRAMES = 60, 2700
 AUDIO_DIR = Path("public/audio")
@@ -29,29 +26,34 @@ SCENES = [
 ]
 
 def gen():
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    model = ParlerTTSForConditionalGeneration.from_pretrained(MODEL_ID).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-    
-    v_dir = SEG_DIR / "IndicParler"
+    client = texttospeech.TextToSpeechClient()
+    v_dir = SEG_DIR / "GoogleNeural"
     v_dir.mkdir(parents=True, exist_ok=True)
     
-    input_ids = tokenizer(DESCRIPTION, return_tensors="pt").input_ids.to(device)
-    
+    voice = texttospeech.VoiceSelectionParams(
+        language_code="hi-IN", name=VOICE_ID
+    )
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3,
+        effects_profile_id=["telephony-class-application"], # Optimal for narration
+        pitch=-2.0, # Slightly deeper
+        speaking_rate=1.1 # Faster Zack D. Films pace
+    )
+
     for sc in SCENES:
-        prompt_input_ids = tokenizer(sc["text"], return_tensors="pt").input_ids.to(device)
-        generation = model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
-        audio_arr = generation.cpu().numpy().squeeze()
-        sf.write(v_dir / f"{sc['id']}.wav", audio_arr, model.config.sampling_rate)
+        synthesis_input = texttospeech.SynthesisInput(text=sc["text"])
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+        with open(v_dir / f"{sc['id']}.mp3", "wb") as out:
+            out.write(response.audio_content)
 
 def comb():
-    v_dir = SEG_DIR / "IndicParler"
+    v_dir = SEG_DIR / "GoogleNeural"
     inputs, filter_parts, labels = [], [], []
     for idx, sc in enumerate(SCENES):
         start_ms = int(sc["fs"] / FPS * 1000)
-        inputs += ["-i", str(v_dir / f"{sc['id']}.mp3")] # FFMPEG will handle wav to mp3 or I should use wav
-        # Fixed: using .wav since sf.write saves as wav
-        inputs[-1] = str(v_dir / f"{sc['id']}.wav")
+        inputs += ["-i", str(v_dir / f"{sc['id']}.mp3")]
         filter_parts.append(f"[{idx}]adelay={start_ms}|{start_ms}[d{idx}]")
         labels.append(f"[d{idx}]")
     fc = ";".join(filter_parts) + ";" + "".join(labels) + f"amix=inputs={len(SCENES)}:normalize=0[out]"
